@@ -1,6 +1,6 @@
 use rayon::prelude::*;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::compressors::{
     detect_format, Bzip2Compressor, GzipCompressor, TarCompressor, XzCompressor, ZipCompressor,
@@ -102,8 +102,9 @@ pub fn decompress_file(input: &PathBuf, config: &CompressionConfig) -> JcResult<
             .file_name()
             .ok_or_else(|| JcError::Other("Invalid extracted filename".to_string()))?;
 
-        // Place it in the current directory
-        PathBuf::from(".").join(extracted_name)
+        // Place it in the same directory as the input archive
+        let input_parent = input.parent().unwrap_or_else(|| Path::new("."));
+        input_parent.join(extracted_name)
     };
 
     debug!("Final destination: {}", final_dest.display());
