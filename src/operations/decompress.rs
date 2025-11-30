@@ -1,6 +1,6 @@
 use rayon::prelude::*;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::compressors::{
     detect_format, Bzip2Compressor, GzipCompressor, TarCompressor, XzCompressor, ZipCompressor,
@@ -84,29 +84,27 @@ pub fn decompress_file(input: &PathBuf, config: &CompressionConfig) -> JcResult<
     // Determine final destination
     let final_dest = if let Some(ref move_to) = config.move_to {
         // When using -C with multiple extracted files, use move_to directly
-        // Otherwise, create a subdirectory based on the archive name
+        // Otherwise, create a subdirectory based on the actual extracted content name
         if current_file.is_dir() && current_file == temp_dir_path {
             // Multiple files extracted - put them directly in move_to
             move_to.clone()
         } else {
-            // Single file or directory - create subdirectory
-            let mut dest = input.clone();
-            while detect_format(&dest).is_some() {
-                dest = dest.with_extension("");
-            }
-            let filename = dest
+            // Single file or directory - use the actual extracted content name
+            let extracted_name = current_file
                 .file_name()
-                .ok_or_else(|| JcError::Other("Invalid output filename".to_string()))?;
-            move_to.join(filename)
+                .ok_or_else(|| JcError::Other("Invalid extracted filename".to_string()))?;
+            move_to.join(extracted_name)
         }
     } else {
-        // Determine output based on input filename
-        let mut dest = input.clone();
-        // Remove all compression extensions
-        while detect_format(&dest).is_some() {
-            dest = dest.with_extension("");
-        }
-        dest
+        // Use the actual extracted content name, not the archive name
+        // current_file points to the extracted content in temp directory
+        let extracted_name = current_file
+            .file_name()
+            .ok_or_else(|| JcError::Other("Invalid extracted filename".to_string()))?;
+
+        // Place it in the same directory as the input archive
+        let input_parent = input.parent().unwrap_or_else(|| Path::new("."));
+        input_parent.join(extracted_name)
     };
 
     debug!("Final destination: {}", final_dest.display());
@@ -155,6 +153,19 @@ pub fn decompress_file(input: &PathBuf, config: &CompressionConfig) -> JcResult<
                         final_dest.display()
                     )));
                 }
+                // Remove existing directory/file before copying
+                if final_dest.is_dir() {
+                    fs::remove_dir_all(&final_dest).map_err(|e| JcError::Io(e))?;
+                } else {
+                    fs::remove_file(&final_dest).map_err(|e| JcError::Io(e))?;
+                }
+            } else if final_dest.exists() && config.force {
+                // Force mode: remove without prompting
+                if final_dest.is_dir() {
+                    fs::remove_dir_all(&final_dest).map_err(|e| JcError::Io(e))?;
+                } else {
+                    fs::remove_file(&final_dest).map_err(|e| JcError::Io(e))?;
+                }
             }
             use crate::utils::copy_recursive;
             copy_recursive(&current_file, &final_dest).map_err(|e| JcError::Io(e))?;
@@ -169,6 +180,19 @@ pub fn decompress_file(input: &PathBuf, config: &CompressionConfig) -> JcResult<
                     "Decompression aborted: file already exists: {}",
                     final_dest.display()
                 )));
+            }
+            // Remove existing file/directory before copying
+            if final_dest.is_dir() {
+                fs::remove_dir_all(&final_dest).map_err(|e| JcError::Io(e))?;
+            } else {
+                fs::remove_file(&final_dest).map_err(|e| JcError::Io(e))?;
+            }
+        } else if final_dest.exists() && config.force {
+            // Force mode: remove without prompting
+            if final_dest.is_dir() {
+                fs::remove_dir_all(&final_dest).map_err(|e| JcError::Io(e))?;
+            } else {
+                fs::remove_file(&final_dest).map_err(|e| JcError::Io(e))?;
             }
         }
         fs::copy(&current_file, &final_dest).map_err(|e| JcError::Io(e))?;
