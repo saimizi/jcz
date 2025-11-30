@@ -1,8 +1,8 @@
 # Software Design Document (SDD)
 ## JCZ - Just Compress Zip Utility (Rust Implementation)
 
-**Version:** 1.0
-**Date:** 2025-11-01
+**Version:** 1.1
+**Date:** 2025-11-30
 **Document Status:** Final
 **Implementation Language:** Rust
 
@@ -69,14 +69,14 @@ This document covers:
 │  (Trait Definitions, Common Interfaces, Type Dispatch)       │
 └──────────────────────┬──────────────────────────────────────┘
                        │
-         ┌─────────────┼─────────────┬────────────┐
-         ▼             ▼             ▼            ▼
-    ┌────────┐   ┌────────┐   ┌────────┐   ┌────────┐
-    │  GZIP  │   │ BZIP2  │   │   XZ   │   │  TAR   │
-    │ Module │   │ Module │   │ Module │   │ Module │
-    └────────┘   └────────┘   └────────┘   └────────┘
-         │             │             │            │
-         └─────────────┴─────────────┴────────────┘
+         ┌─────────────┼─────────────┬────────────┬────────────┐
+         ▼             ▼             ▼            ▼            ▼
+    ┌────────┐   ┌────────┐   ┌────────┐   ┌────────┐   ┌────────┐
+    │  GZIP  │   │ BZIP2  │   │   XZ   │   │  ZIP   │   │  TAR   │
+    │ Module │   │ Module │   │ Module │   │ Module │   │ Module │
+    └────────┘   └────────┘   └────────┘   └────────┘   └────────┘
+         │             │             │            │            │
+         └─────────────┴─────────────┴────────────┴────────────┘
                        │
                        ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -113,6 +113,7 @@ jcz/
 │   │   ├── gzip.rs             # GZIP implementation
 │   │   ├── bzip2.rs            # BZIP2 implementation
 │   │   ├── xz.rs               # XZ implementation
+│   │   ├── zip.rs              # ZIP implementation
 │   │   └── tar.rs              # TAR implementation
 │   ├── operations/
 │   │   ├── mod.rs              # Operations module root
@@ -465,6 +466,7 @@ pub enum CompressionFormat {
     Gzip,
     Bzip2,
     Xz,
+    Zip,
     Tar,
 }
 
@@ -475,6 +477,7 @@ impl CompressionFormat {
             CompressionFormat::Gzip => "gz",
             CompressionFormat::Bzip2 => "bz2",
             CompressionFormat::Xz => "xz",
+            CompressionFormat::Zip => "zip",
             CompressionFormat::Tar => "tar",
         }
     }
@@ -485,6 +488,7 @@ impl CompressionFormat {
             "gz" => Some(CompressionFormat::Gzip),
             "bz2" => Some(CompressionFormat::Bzip2),
             "xz" => Some(CompressionFormat::Xz),
+            "zip" => Some(CompressionFormat::Zip),
             "tar" => Some(CompressionFormat::Tar),
             _ => None,
         }
@@ -496,6 +500,7 @@ impl CompressionFormat {
             CompressionFormat::Gzip => "gzip",
             CompressionFormat::Bzip2 => "bzip2",
             CompressionFormat::Xz => "xz",
+            CompressionFormat::Zip => "zip",
             CompressionFormat::Tar => "tar",
         }
     }
@@ -954,12 +959,37 @@ impl MultiFileCompressor for TarCompressor {
 - **Path manipulation**: Handle parent/basename splitting
 - **No compression level**: Returns true for any level (no-op)
 
-#### 3.2.3 Compressor Factory (`src/compressors/mod.rs`)
+#### 3.2.3 ZIP Implementation (`src/compressors/zip.rs`)
+
+**Purpose**: ZIP compression and decompression using system `zip` and `unzip` commands.
+
+**Key Features**:
+- Supports both files and directories
+- Archive format (can contain multiple files)
+- Compression levels 0-9
+- Cross-platform compatibility
+
+**Design Rationale**:
+- **Archive support**: Unlike gzip/bzip2/xz, ZIP is both a compression algorithm and archive format
+- **Directory compression**: Recursive flag (`-r`) enables directory compression
+- **Quiet mode**: Suppress verbose output for cleaner logs
+- **Flexible extraction**: Handles single files, directories, and multiple loose files
+
+**Implementation Notes**:
+- Uses `zip` command for compression with `-q` (quiet) and optional `-r` (recursive)
+- Uses `unzip` command for decompression with `-o` (overwrite)
+- Compression levels: 0 (store only) to 9 (maximum compression)
+- Default level: 6
+- Supports timestamp options for output naming
+- `decompress_in_dir` method detects extraction result (single file, directory, or multiple files)
+
+#### 3.2.4 Compressor Factory (`src/compressors/mod.rs`)
 
 ```rust
 pub mod gzip;
 pub mod bzip2;
 pub mod xz;
+pub mod zip;
 pub mod tar;
 
 use crate::core::compressor::Compressor;
@@ -972,6 +1002,7 @@ pub fn create_compressor(format: CompressionFormat) -> Box<dyn Compressor> {
         CompressionFormat::Gzip => Box::new(gzip::GzipCompressor::new()),
         CompressionFormat::Bzip2 => Box::new(bzip2::Bzip2Compressor::new()),
         CompressionFormat::Xz => Box::new(xz::XzCompressor::new()),
+        CompressionFormat::Zip => Box::new(zip::ZipCompressor::new()),
         CompressionFormat::Tar => Box::new(tar::TarCompressor::new()),
     }
 }
@@ -1929,7 +1960,7 @@ impl CliArgs {
         }
 
         // Validate compression command
-        let valid_commands = ["gzip", "bzip2", "xz", "tar", "tgz", "tbz2", "txz"];
+        let valid_commands = ["gzip", "bzip2", "xz", "zip", "tar", "tgz", "tbz2", "txz"];
         if !valid_commands.contains(&self.command.as_str()) {
             return Err(format!("Invalid compression command: {}", self.command));
         }
@@ -2049,7 +2080,7 @@ fn handle_compress(
             Ok(())
         }
     } else {
-        // Simple format (gzip, bzip2, xz, tar)
+        // Simple format (gzip, bzip2, xz, zip, tar)
         let format = CompressionFormat::from_extension(command)
             .ok_or_else(|| JcError::InvalidCommand(command.to_string()))?;
 
@@ -2336,7 +2367,7 @@ jobs:
       - name: Install compression tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y gzip bzip2 xz-utils tar
+          sudo apt-get install -y gzip bzip2 xz-utils zip unzip tar
 
       - name: Check formatting
         run: cargo fmt -- --check

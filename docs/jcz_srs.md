@@ -1,8 +1,8 @@
 # Software Requirements Specification (SRS)
 ## JCZ - Just Compress Zip Utility
 
-**Version:** 1.0
-**Date:** 2025-11-01
+**Version:** 1.1
+**Date:** 2025-11-30
 **Document Status:** Final
 
 ---
@@ -13,7 +13,7 @@
 This document specifies the functional and non-functional requirements for JCZ (Just Compress Zip), a command-line compression utility that provides a unified interface for multiple compression formats.
 
 ### 1.2 Scope
-JCZ is a command-line tool that simplifies file and directory compression/decompression operations. It supports multiple compression algorithms (GZIP, BZIP2, XZ) and archive formats (TAR), including compound formats (TAR+GZIP, TAR+BZIP2, TAR+XZ).
+JCZ is a command-line tool that simplifies file and directory compression/decompression operations. It supports multiple compression algorithms (GZIP, BZIP2, XZ, ZIP) and archive formats (TAR), including compound formats (TAR+GZIP, TAR+BZIP2, TAR+XZ).
 
 ### 1.3 Intended Audience
 - Software developers implementing the tool
@@ -27,6 +27,7 @@ JCZ is a command-line tool that simplifies file and directory compression/decomp
 - **GZIP**: GNU Zip compression algorithm
 - **BZIP2**: Burrows-Wheeler compression algorithm
 - **XZ**: LZMA/LZMA2 compression algorithm
+- **ZIP**: ZIP compression and archive format
 - **TAR**: Tape Archive format
 - **TGZ**: TAR + GZIP compound format (.tar.gz)
 - **TBZ2**: TAR + BZIP2 compound format (.tar.bz2)
@@ -37,10 +38,10 @@ JCZ is a command-line tool that simplifies file and directory compression/decomp
 ## 2. Overall Description
 
 ### 2.1 Product Perspective
-JCZ is a standalone command-line utility that wraps system compression tools (gzip, bzip2, xz, tar) to provide a consistent, simplified interface. It acts as a compression abstraction layer, allowing users to compress/decompress files without memorizing different command syntaxes for each compression tool.
+JCZ is a standalone command-line utility that wraps system compression tools (gzip, bzip2, xz, zip, unzip, tar) to provide a consistent, simplified interface. It acts as a compression abstraction layer, allowing users to compress/decompress files without memorizing different command syntaxes for each compression tool.
 
 ### 2.2 Product Features
-1. **Multi-Format Compression**: Support for GZIP, BZIP2, XZ, TAR, TGZ, TBZ2, TXZ
+1. **Multi-Format Compression**: Support for GZIP, BZIP2, XZ, ZIP, TAR, TGZ, TBZ2, TXZ
 2. **Multi-Format Decompression**: Automatic format detection and sequential decompression
 3. **Isolated Decompression**: Temporary directory isolation prevents file conflicts
 4. **Force Overwrite**: Skip interactive prompts with --force/-f flag
@@ -62,12 +63,12 @@ JCZ is a standalone command-line utility that wraps system compression tools (gz
 
 ### 2.4 Operating Environment
 - **Operating Systems**: Linux, Unix-like systems
-- **Dependencies**: System utilities (gzip, bzip2, xz, tar, mv, cp, readlink)
+- **Dependencies**: System utilities (gzip, bzip2, xz, zip, unzip, tar, mv, cp, readlink)
 - **Interface**: Command-line terminal
 - **File Systems**: Any POSIX-compatible filesystem
 
 ### 2.5 Design and Implementation Constraints
-1. Must use external system compression tools (gzip, bzip2, xz, tar)
+1. Must use external system compression tools (gzip, bzip2, xz, zip, unzip, tar)
 2. Must preserve original files during compression operations
 3. Must handle file paths up to system limits
 4. Must operate within terminal environment constraints
@@ -82,11 +83,11 @@ JCZ is a standalone command-line utility that wraps system compression tools (gz
 #### 3.1.1 Compression Operations
 
 ##### FR-COMP-001: Single File Compression
-**Description**: The system shall compress individual files using GZIP, BZIP2, or XZ algorithms.
+**Description**: The system shall compress individual files using GZIP, BZIP2, XZ, or ZIP algorithms.
 
 **Inputs**:
-- Input file path (file or directory for TAR)
-- Compression algorithm (gzip, bzip2, xz, tar)
+- Input file path (file or directory for TAR/ZIP)
+- Compression algorithm (gzip, bzip2, xz, zip, tar)
 - Optional: Compression level (1-9)
 - Optional: Timestamp option (0-3)
 - Optional: Destination directory
@@ -435,6 +436,7 @@ JCZ is a standalone command-line utility that wraps system compression tools (gz
 - `gzip`
 - `bzip2`
 - `xz`
+- `zip`
 - `tar`
 - `tgz`
 - `tbz2`
@@ -451,6 +453,7 @@ JCZ is a standalone command-line utility that wraps system compression tools (gz
 - `.gz`
 - `.bz2`
 - `.xz`
+- `.zip`
 - `.tar`
 - `.tar.gz`
 - `.tar.bz2`
@@ -541,6 +544,8 @@ jcz [Options] <File|Dir> [File|Dir]...
 - `gzip`: For GZIP compression/decompression
 - `bzip2`: For BZIP2 compression/decompression
 - `xz`: For XZ compression/decompression
+- `zip`: For ZIP compression
+- `unzip`: For ZIP decompression
 - `tar`: For TAR archive creation/extraction
 - `mv`: For moving files
 - `cp`: For copying files
@@ -912,7 +917,48 @@ jcz [Options] <File|Dir> [File|Dir]...
 - Cannot compress directories (must error)
 - Only compresses single files
 
-#### 4.5.4 TAR Archiving
+#### 4.5.4 ZIP Compression
+
+**Algorithm**: DEFLATE (similar to GZIP) with archive support
+
+**Extension**: `.zip`
+
+**Compression Tool**: `zip` (compression), `unzip` (decompression)
+
+**Tool Arguments**:
+- Compression: `zip -<level> -q [-r] <outfile> <infile>`
+- Decompression: `unzip -o <infile> -d <outdir>`
+
+**Compression Levels**: 0-9
+- 0: Store only (no compression)
+- 1: Fastest compression
+- 9: Best compression
+- Default: 6
+
+**Default Behavior**:
+- Keep original file (zip doesn't modify source)
+- Recursive flag (`-r`) for directories
+- Quiet mode (`-q`) to suppress output
+- Overwrite without prompting (`-o`) for decompression
+
+**File Naming**:
+- Without timestamp: `<filename>.zip`
+- With timestamp: `<filename>_<timestamp>.zip`
+
+**Decompression**:
+- Extract to parent directory or specified destination
+- Remove `.zip` extension to determine output name
+- Supports single files, directories, and multiple files
+
+**Special Features**:
+- Can compress both files and directories
+- Archive format (can contain multiple files)
+- Cross-platform compatibility
+
+**Restrictions**:
+- None (supports both files and directories)
+
+#### 4.5.5 TAR Archiving
 
 **Format**: POSIX ustar format
 

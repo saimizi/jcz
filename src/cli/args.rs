@@ -53,7 +53,7 @@ impl CliArgs {
         }
 
         // Validate compression command
-        let valid_commands = ["gzip", "bzip2", "xz", "tar", "tgz", "tbz2", "txz"];
+        let valid_commands = ["gzip", "bzip2", "xz", "tar", "zip", "tgz", "tbz2", "txz"];
         if !valid_commands.contains(&self.command.as_str()) {
             return Err(format!("Invalid compression command: {}", self.command));
         }

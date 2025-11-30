@@ -7,6 +7,7 @@ pub enum CompressionFormat {
     Bzip2,
     Xz,
     Tar,
+    Zip,
 }
 
 impl CompressionFormat {
@@ -18,6 +19,7 @@ impl CompressionFormat {
             CompressionFormat::Bzip2 => "bz2",
             CompressionFormat::Xz => "xz",
             CompressionFormat::Tar => "tar",
+            CompressionFormat::Zip => "zip",
         }
     }
 
@@ -28,6 +30,7 @@ impl CompressionFormat {
             "bz2" => Some(CompressionFormat::Bzip2),
             "xz" => Some(CompressionFormat::Xz),
             "tar" => Some(CompressionFormat::Tar),
+            "zip" => Some(CompressionFormat::Zip),
             _ => None,
         }
     }
@@ -39,6 +42,7 @@ impl CompressionFormat {
             CompressionFormat::Bzip2 => "bzip2",
             CompressionFormat::Xz => "xz",
             CompressionFormat::Tar => "tar",
+            CompressionFormat::Zip => "zip",
         }
     }
 
@@ -49,6 +53,7 @@ impl CompressionFormat {
             "bzip2" => Some(CompressionFormat::Bzip2),
             "xz" => Some(CompressionFormat::Xz),
             "tar" => Some(CompressionFormat::Tar),
+            "zip" => Some(CompressionFormat::Zip),
             _ => None,
         }
     }
