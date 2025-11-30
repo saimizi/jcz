@@ -3,7 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::compressors::{
-    detect_format, Bzip2Compressor, GzipCompressor, TarCompressor, XzCompressor,
+    detect_format, Bzip2Compressor, GzipCompressor, TarCompressor, XzCompressor, ZipCompressor,
 };
 use crate::core::config::CompressionConfig;
 use crate::core::error::{JcError, JcResult};
@@ -33,6 +33,10 @@ fn decompress_in_working_dir(
         }
         CompressionFormat::Tar => {
             let compressor = TarCompressor::new();
+            compressor.decompress_in_dir(input, working_dir, config)
+        }
+        CompressionFormat::Zip => {
+            let compressor = ZipCompressor::new();
             compressor.decompress_in_dir(input, working_dir, config)
         }
     }

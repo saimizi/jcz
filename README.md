@@ -4,7 +4,7 @@ A unified command-line compression utility written in Rust, providing a consiste
 
 ## Features
 
-- **Multi-Format Support**: GZIP, BZIP2, XZ, TAR, and compound formats (TGZ, TBZ2, TXZ)
+- **Multi-Format Support**: GZIP, BZIP2, XZ, ZIP, TAR, and compound formats (TGZ, TBZ2, TXZ)
 - **Parallel Processing**: Concurrent compression/decompression of multiple files using Rayon
 - **Timestamp Options**: Add timestamps to output filenames (date, datetime, or nanoseconds)
 - **File Collection**: Combine multiple files into single archives
@@ -31,6 +31,9 @@ jcz -c gzip file.txt
 
 # Compress with BZIP2 at level 9
 jcz -c bzip2 -l 9 file.txt
+
+# Compress with ZIP
+jcz -c zip file.txt
 
 # Create TAR archive
 jcz -c tar directory/
@@ -95,6 +98,7 @@ jcz -c tgz -A myarchive file1.txt file2.txt
 - `gzip` - GZIP compression (.gz)
 - `bzip2` - BZIP2 compression (.bz2)
 - `xz` - XZ compression (.xz)
+- `zip` - ZIP compression (.zip)
 - `tar` - TAR archive (.tar)
 - `tgz` - TAR + GZIP (.tar.gz)
 - `tbz2` - TAR + BZIP2 (.tar.bz2)
@@ -117,7 +121,7 @@ JCDBG=debug jcz -c gzip file.txt
 The implementation follows a modular design:
 
 - **Core Module**: Trait definitions, error types, configuration structures
-- **Compressor Modules**: Individual implementations for GZIP, BZIP2, XZ, TAR
+- **Compressor Modules**: Individual implementations for GZIP, BZIP2, XZ, ZIP, TAR
 - **Operations Module**: High-level operations (compress, decompress, compound, collection)
 - **Utils Module**: File system utilities, logging, validation, timestamp generation
 - **CLI Module**: Command-line argument parsing and command execution
@@ -140,7 +144,7 @@ The implementation follows a modular design:
 ## System Requirements
 
 - Rust 2021 edition or later
-- System utilities: `gzip`, `bzip2`, `xz`, `tar`, `mv`, `cp`, `readlink`
+- System utilities: `gzip`, `bzip2`, `xz`, `zip`, `unzip`, `tar`, `mv`, `cp`, `readlink`
 
 ## Documentation
 
