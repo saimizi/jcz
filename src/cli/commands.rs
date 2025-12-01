@@ -1,7 +1,10 @@
 use std::path::PathBuf;
 
 use crate::cli::args::CliArgs;
-use crate::core::config::{CollectionConfig, CollectionMode, CompressionConfig, TimestampOption};
+use crate::core::config::{
+    CollectionConfig, CollectionMode, CompressionConfig, DecryptionMethod, EncryptionMethod,
+    TimestampOption,
+};
 use crate::core::error::{JcError, JcResult};
 use crate::core::types::{CompoundFormat, CompressionFormat};
 use crate::operations::{collect_and_compress, compound, compress, decompress};
@@ -28,13 +31,36 @@ pub fn execute(args: CliArgs) -> JcResult<()> {
         config
     };
 
+    // Add encryption configuration if specified
+    let config = if args.encrypt_password {
+        config.with_encryption(Some(EncryptionMethod::Password))
+    } else if let Some(ref public_key_path) = args.encrypt_key {
+        config.with_encryption(Some(EncryptionMethod::Rsa {
+            public_key_path: public_key_path.clone(),
+        }))
+    } else {
+        config
+    };
+
     // Validate input files
     let inputs = validate_input_files(args.inputs)?;
     let input_paths: Vec<PathBuf> = inputs.iter().map(|f| f.real_path.clone()).collect();
 
     if args.decompress {
         // Decompression mode
-        handle_decompress(input_paths, config)
+        let decryption_method = if let Some(ref private_key_path) = args.decrypt_key {
+            Some(DecryptionMethod::Rsa {
+                private_key_path: private_key_path.clone(),
+            })
+        } else {
+            None
+        };
+        handle_decompress(
+            input_paths,
+            config,
+            decryption_method,
+            args.remove_encrypted,
+        )
     } else if args.collect.is_some() || args.collect_flat.is_some() {
         // Collection mode
         let mode = if args.collect.is_some() {
@@ -52,8 +78,13 @@ pub fn execute(args: CliArgs) -> JcResult<()> {
     }
 }
 
-fn handle_decompress(inputs: Vec<PathBuf>, config: CompressionConfig) -> JcResult<()> {
-    let results = decompress::decompress_files(inputs, config);
+fn handle_decompress(
+    inputs: Vec<PathBuf>,
+    config: CompressionConfig,
+    decryption_method: Option<DecryptionMethod>,
+    remove_encrypted: bool,
+) -> JcResult<()> {
+    let results = decompress::decompress_files(inputs, config, decryption_method, remove_encrypted);
 
     // Check for errors
     let mut had_errors = false;

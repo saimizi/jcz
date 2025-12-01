@@ -5,8 +5,9 @@ use std::path::{Path, PathBuf};
 use crate::compressors::{
     detect_format, Bzip2Compressor, GzipCompressor, TarCompressor, XzCompressor, ZipCompressor,
 };
-use crate::core::config::CompressionConfig;
+use crate::core::config::{CompressionConfig, DecompressionConfig};
 use crate::core::error::{JcError, JcResult};
+use crate::operations::decrypt;
 use crate::utils::{create_decompress_temp_dir, debug, error, info, prompt_overwrite};
 
 /// Helper function to decompress in a working directory based on format
@@ -40,6 +41,28 @@ fn decompress_in_working_dir(
             compressor.decompress_in_dir(input, working_dir, config)
         }
     }
+}
+
+/// Decompress a single file with decryption support
+pub fn decompress_file_with_decryption(
+    input: &PathBuf,
+    config: &DecompressionConfig,
+) -> JcResult<PathBuf> {
+    // First, decrypt if the file is encrypted
+    let decrypted_path =
+        decrypt::decrypt_file(input, config.decryption.as_ref(), config.remove_encrypted)?;
+
+    // Then decompress using the standard config
+    let compression_config = CompressionConfig {
+        level: 6,
+        timestamp: crate::core::config::TimestampOption::None,
+        move_to: config.move_to.clone(),
+        show_output_size: false,
+        force: config.force,
+        encryption: None,
+    };
+
+    decompress_file(&decrypted_path, &compression_config)
 }
 
 /// Decompress a single file, handling compound formats
@@ -204,16 +227,48 @@ pub fn decompress_file(input: &PathBuf, config: &CompressionConfig) -> JcResult<
 }
 
 /// Decompress multiple files concurrently
-pub fn decompress_files(inputs: Vec<PathBuf>, config: CompressionConfig) -> Vec<JcResult<PathBuf>> {
+pub fn decompress_files(
+    inputs: Vec<PathBuf>,
+    config: CompressionConfig,
+    decryption_method: Option<crate::core::config::DecryptionMethod>,
+    remove_encrypted: bool,
+) -> Vec<JcResult<PathBuf>> {
     info!("Decompressing {} files", inputs.len());
 
     inputs
         .par_iter()
-        .map(|input| match decompress_file(input, &config) {
-            Ok(output) => Ok(output),
-            Err(e) => {
-                error!("Failed to decompress {}: {}", input.display(), e);
-                Err(e)
+        .map(|input| {
+            // Check if file is encrypted (has .jcze extension)
+            let is_encrypted = input
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|s| s == "jcze")
+                .unwrap_or(false);
+
+            if is_encrypted {
+                // Decrypt first, then decompress
+                let decompression_config = DecompressionConfig {
+                    move_to: config.move_to.clone(),
+                    force: config.force,
+                    decryption: decryption_method.clone(),
+                    remove_encrypted,
+                };
+                match decompress_file_with_decryption(input, &decompression_config) {
+                    Ok(output) => Ok(output),
+                    Err(e) => {
+                        error!("Failed to decompress {}: {}", input.display(), e);
+                        Err(e)
+                    }
+                }
+            } else {
+                // Normal decompression
+                match decompress_file(input, &config) {
+                    Ok(output) => Ok(output),
+                    Err(e) => {
+                        error!("Failed to decompress {}: {}", input.display(), e);
+                        Err(e)
+                    }
+                }
             }
         })
         .collect()

@@ -6,6 +6,7 @@ use crate::core::config::CompressionConfig;
 use crate::core::config::TimestampOption;
 use crate::core::error::JcResult;
 use crate::core::types::CompoundFormat;
+use crate::operations::encrypt;
 use crate::utils::{debug, info, remove_file_silent};
 
 /// Compress file(s) with compound format (TAR + secondary compression)
@@ -28,6 +29,7 @@ pub fn compress_compound(
         move_to: None, // Don't move intermediate file
         show_output_size: false,
         force: config.force,
+        encryption: None, // Encryption happens after compound compression
     };
 
     // Remove timestamp to avoid duplication
@@ -46,7 +48,13 @@ pub fn compress_compound(
     }
 
     info!("Created compound archive: {}", secondary_output.display());
-    Ok(secondary_output)
+
+    // Step 4: Encrypt if encryption is enabled
+    if let Some(encryption_method) = &config.encryption {
+        encrypt::encrypt_file(&secondary_output, encryption_method)
+    } else {
+        Ok(secondary_output)
+    }
 }
 
 /// Compress multiple files with compound format
@@ -55,8 +63,39 @@ pub fn compress_compound_batch(
     format: CompoundFormat,
     config: CompressionConfig,
 ) -> Vec<JcResult<PathBuf>> {
-    inputs
-        .par_iter()
-        .map(|input| compress_compound(input, format, &config))
-        .collect()
+    // Check if password encryption is used
+    let has_password_encryption = matches!(
+        config.encryption,
+        Some(crate::core::config::EncryptionMethod::Password)
+    );
+
+    if has_password_encryption {
+        // For password encryption, compress all files first, then encrypt with shared password
+        let compressed: Vec<JcResult<PathBuf>> = inputs
+            .par_iter()
+            .map(|input| {
+                // Compress without encryption first
+                let mut temp_config = config.clone();
+                temp_config.encryption = None;
+                compress_compound(input, format, &temp_config)
+            })
+            .collect();
+
+        // Collect successful compressions
+        let compressed_paths: Vec<PathBuf> =
+            compressed.into_iter().filter_map(|r| r.ok()).collect();
+
+        // Encrypt all with the same password
+        if let Some(encryption_method) = &config.encryption {
+            encrypt::encrypt_files(compressed_paths, encryption_method)
+        } else {
+            vec![]
+        }
+    } else {
+        // For RSA or no encryption, process independently
+        inputs
+            .par_iter()
+            .map(|input| compress_compound(input, format, &config))
+            .collect()
+    }
 }

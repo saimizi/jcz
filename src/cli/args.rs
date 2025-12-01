@@ -62,6 +62,22 @@ EXAMPLES:
   # Force overwrite without prompting
   jcz -d -f archive.tar.gz
 
+ENCRYPTION:
+  # Encrypt with password
+  jcz -c gzip -e file.txt
+
+  # Encrypt with RSA public key
+  jcz -c gzip --encrypt-key public.pem file.txt
+
+  # Decrypt with password (will prompt)
+  jcz -d file.txt.gz.jcze
+
+  # Decrypt with RSA private key
+  jcz -d --decrypt-key private.pem file.txt.gz.jcze
+
+  # Decrypt and remove encrypted file
+  jcz -d --remove-encrypted file.txt.gz.jcze
+
 ENVIRONMENT VARIABLES:
   JCDBG    Control logging verbosity (error, warn, info, debug)
 
@@ -110,6 +126,22 @@ pub struct CliArgs {
     /// Input files or directories
     #[arg(required = true)]
     pub inputs: Vec<PathBuf>,
+
+    /// Enable password-based encryption
+    #[arg(long = "encrypt-password", short = 'e')]
+    pub encrypt_password: bool,
+
+    /// RSA public key file for encryption (encrypts the symmetric key)
+    #[arg(long = "encrypt-key")]
+    pub encrypt_key: Option<PathBuf>,
+
+    /// RSA private key file for decryption (decrypts the symmetric key)
+    #[arg(long = "decrypt-key")]
+    pub decrypt_key: Option<PathBuf>,
+
+    /// Remove encrypted file after successful decryption
+    #[arg(long = "remove-encrypted")]
+    pub remove_encrypted: bool,
 }
 
 impl CliArgs {
@@ -131,6 +163,199 @@ impl CliArgs {
             return Err("Cannot specify both -a and -A".to_string());
         }
 
+        // Check that password and RSA encryption are not both specified
+        if self.encrypt_password && self.encrypt_key.is_some() {
+            return Err("Cannot specify both --encrypt-password and --encrypt-key".to_string());
+        }
+
+        // Check that encryption options are only used in compression mode
+        if self.decompress {
+            if self.encrypt_password {
+                return Err("--encrypt-password can only be used in compression mode".to_string());
+            }
+            if self.encrypt_key.is_some() {
+                return Err("--encrypt-key can only be used in compression mode".to_string());
+            }
+        }
+
+        // Check that decryption key is only used in decompression mode
+        if !self.decompress && self.decrypt_key.is_some() {
+            return Err("--decrypt-key can only be used in decompression mode".to_string());
+        }
+
+        // Check that remove-encrypted is only used in decompression mode
+        if !self.decompress && self.remove_encrypted {
+            return Err("--remove-encrypted can only be used in decompression mode".to_string());
+        }
+
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_mutual_exclusivity_password_and_rsa() {
+        let args = CliArgs {
+            decompress: false,
+            force: false,
+            command: "gzip".to_string(),
+            level: 6,
+            move_to: None,
+            collect: None,
+            collect_flat: None,
+            timestamp: 0,
+            inputs: vec![PathBuf::from("file.txt")],
+            encrypt_password: true,
+            encrypt_key: Some(PathBuf::from("key.pem")),
+            decrypt_key: None,
+            remove_encrypted: false,
+        };
+
+        let result = args.validate();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .contains("Cannot specify both --encrypt-password and --encrypt-key"));
+    }
+
+    #[test]
+    fn test_validate_encrypt_password_only_in_compression() {
+        let args = CliArgs {
+            decompress: true,
+            force: false,
+            command: "gzip".to_string(),
+            level: 6,
+            move_to: None,
+            collect: None,
+            collect_flat: None,
+            timestamp: 0,
+            inputs: vec![PathBuf::from("file.txt.gz")],
+            encrypt_password: true,
+            encrypt_key: None,
+            decrypt_key: None,
+            remove_encrypted: false,
+        };
+
+        let result = args.validate();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .contains("--encrypt-password can only be used in compression mode"));
+    }
+
+    #[test]
+    fn test_validate_encrypt_key_only_in_compression() {
+        let args = CliArgs {
+            decompress: true,
+            force: false,
+            command: "gzip".to_string(),
+            level: 6,
+            move_to: None,
+            collect: None,
+            collect_flat: None,
+            timestamp: 0,
+            inputs: vec![PathBuf::from("file.txt.gz")],
+            encrypt_password: false,
+            encrypt_key: Some(PathBuf::from("key.pem")),
+            decrypt_key: None,
+            remove_encrypted: false,
+        };
+
+        let result = args.validate();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .contains("--encrypt-key can only be used in compression mode"));
+    }
+
+    #[test]
+    fn test_validate_decrypt_key_only_in_decompression() {
+        let args = CliArgs {
+            decompress: false,
+            force: false,
+            command: "gzip".to_string(),
+            level: 6,
+            move_to: None,
+            collect: None,
+            collect_flat: None,
+            timestamp: 0,
+            inputs: vec![PathBuf::from("file.txt")],
+            encrypt_password: false,
+            encrypt_key: None,
+            decrypt_key: Some(PathBuf::from("key.pem")),
+            remove_encrypted: false,
+        };
+
+        let result = args.validate();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .contains("--decrypt-key can only be used in decompression mode"));
+    }
+
+    #[test]
+    fn test_validate_valid_password_encryption() {
+        let args = CliArgs {
+            decompress: false,
+            force: false,
+            command: "gzip".to_string(),
+            level: 6,
+            move_to: None,
+            collect: None,
+            collect_flat: None,
+            timestamp: 0,
+            inputs: vec![PathBuf::from("file.txt")],
+            encrypt_password: true,
+            encrypt_key: None,
+            decrypt_key: None,
+            remove_encrypted: false,
+        };
+
+        assert!(args.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_valid_rsa_encryption() {
+        let args = CliArgs {
+            decompress: false,
+            force: false,
+            command: "gzip".to_string(),
+            level: 6,
+            move_to: None,
+            collect: None,
+            collect_flat: None,
+            timestamp: 0,
+            inputs: vec![PathBuf::from("file.txt")],
+            encrypt_password: false,
+            encrypt_key: Some(PathBuf::from("public.pem")),
+            decrypt_key: None,
+            remove_encrypted: false,
+        };
+
+        assert!(args.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_valid_rsa_decryption() {
+        let args = CliArgs {
+            decompress: true,
+            force: false,
+            command: "gzip".to_string(),
+            level: 6,
+            move_to: None,
+            collect: None,
+            collect_flat: None,
+            timestamp: 0,
+            inputs: vec![PathBuf::from("file.txt.gz.jcze")],
+            encrypt_password: false,
+            encrypt_key: None,
+            decrypt_key: Some(PathBuf::from("private.pem")),
+            remove_encrypted: false,
+        };
+
+        assert!(args.validate().is_ok());
     }
 }
