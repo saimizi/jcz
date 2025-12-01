@@ -1,11 +1,79 @@
 use clap::Parser;
 use std::path::PathBuf;
 
+const LONG_ABOUT: &str = concat!(
+    "Just Compress Zip - A unified compression utility\n\n",
+    "Version: ",
+    env!("CARGO_PKG_VERSION"),
+    "\n",
+    "Author: ",
+    env!("CARGO_PKG_AUTHORS"),
+    "\n",
+    "License: ",
+    env!("CARGO_PKG_LICENSE"),
+    "\n",
+    "Repository: ",
+    env!("CARGO_PKG_REPOSITORY"),
+    "\n\n",
+    "A command-line tool that provides a consistent interface for multiple\n",
+    "compression formats including GZIP, BZIP2, XZ, ZIP, TAR, and compound\n",
+    "formats (TGZ, TBZ2, TXZ)."
+);
+
+const AFTER_HELP: &str = "\
+COMPRESSION COMMANDS:
+  gzip    GZIP compression (.gz)
+  bzip2   BZIP2 compression (.bz2)
+  xz      XZ compression (.xz)
+  zip     ZIP compression (.zip)
+  tar     TAR archive (.tar)
+  tgz     TAR + GZIP (.tar.gz)
+  tbz2    TAR + BZIP2 (.tar.bz2)
+  txz     TAR + XZ (.tar.xz)
+
+EXAMPLES:
+  # Compress a file with GZIP
+  jcz -c gzip file.txt
+
+  # Compress with BZIP2 at level 9
+  jcz -c bzip2 -l 9 file.txt
+
+  # Create compressed archive
+  jcz -c tgz directory/
+
+  # Compress with timestamp
+  jcz -c gzip -t 2 file.txt
+
+  # Compress and move to directory
+  jcz -c gzip -C /backups/ file.txt
+
+  # Collect multiple files into archive
+  jcz -c tgz -a myarchive file1.txt file2.txt dir/
+
+  # Decompress any supported format
+  jcz -d archive.tar.gz
+
+  # Decompress to specific directory
+  jcz -d archive.tar.gz -C /output/
+
+  # Decompress multiple files
+  jcz -d file1.gz file2.bz2 file3.xz
+
+  # Force overwrite without prompting
+  jcz -d -f archive.tar.gz
+
+ENVIRONMENT VARIABLES:
+  JCDBG    Control logging verbosity (error, warn, info, debug)
+
+For more information, visit: https://github.com/saimizi/jc";
+
 #[derive(Parser, Debug)]
 #[command(name = "jcz")]
 #[command(author = "JCZ Contributors")]
 #[command(version)]
-#[command(about = "Just Compress Zip - A unified compression utility", long_about = None)]
+#[command(about = "Just Compress Zip - A unified compression utility")]
+#[command(long_about = LONG_ABOUT)]
+#[command(after_help = AFTER_HELP)]
 pub struct CliArgs {
     /// Decompress mode
     #[arg(short = 'd', long)]
@@ -15,7 +83,7 @@ pub struct CliArgs {
     #[arg(short = 'f', long)]
     pub force: bool,
 
-    /// Compression command
+    /// Compression command (see COMPRESSION COMMANDS below)
     #[arg(short = 'c', long, default_value = "tgz")]
     pub command: String,
 
@@ -23,7 +91,7 @@ pub struct CliArgs {
     #[arg(short = 'l', long, default_value = "6")]
     pub level: u8,
 
-    /// Move compressed file to specified directory
+    /// Move output to specified directory (works for both compression and decompression)
     #[arg(short = 'C', long)]
     pub move_to: Option<PathBuf>,
 
