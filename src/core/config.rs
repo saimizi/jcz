@@ -21,6 +21,15 @@ impl TimestampOption {
     }
 }
 
+/// Encryption method for compression
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EncryptionMethod {
+    /// Password-based encryption
+    Password,
+    /// RSA encryption with public key file path
+    Rsa { public_key_path: PathBuf },
+}
+
 /// Configuration for compression/decompression operations
 #[derive(Debug, Clone)]
 pub struct CompressionConfig {
@@ -39,6 +48,9 @@ pub struct CompressionConfig {
 
     /// Force overwrite without prompting
     pub force: bool,
+
+    /// Encryption method (if any)
+    pub encryption: Option<EncryptionMethod>,
 }
 
 impl Default for CompressionConfig {
@@ -49,6 +61,7 @@ impl Default for CompressionConfig {
             move_to: None,
             show_output_size: false,
             force: false,
+            encryption: None,
         }
     }
 }
@@ -77,6 +90,11 @@ impl CompressionConfig {
         self.force = force;
         self
     }
+
+    pub fn with_encryption(mut self, encryption: Option<EncryptionMethod>) -> Self {
+        self.encryption = encryption;
+        self
+    }
 }
 
 /// Collection operation mode
@@ -87,6 +105,74 @@ pub enum CollectionMode {
 
     /// Archive files without parent directory wrapper (-A flag)
     Flat,
+}
+
+/// Decryption method for decompression
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum DecryptionMethod {
+    /// Password-based decryption (will prompt for password)
+    Password,
+    /// RSA decryption with private key file path
+    Rsa { private_key_path: PathBuf },
+}
+
+/// Configuration for decompression operations
+#[derive(Debug, Clone)]
+pub struct DecompressionConfig {
+    /// Destination directory for output files
+    pub move_to: Option<PathBuf>,
+
+    /// Force overwrite without prompting
+    pub force: bool,
+
+    /// Decryption method (if any)
+    pub decryption: Option<DecryptionMethod>,
+
+    /// Remove encrypted file after successful decryption
+    pub remove_encrypted: bool,
+}
+
+impl Default for DecompressionConfig {
+    fn default() -> Self {
+        Self {
+            move_to: None,
+            force: false,
+            decryption: None,
+            remove_encrypted: false,
+        }
+    }
+}
+
+impl DecompressionConfig {
+    #[allow(dead_code)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[allow(dead_code)]
+    pub fn with_move_to(mut self, path: PathBuf) -> Self {
+        self.move_to = Some(path);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_force(mut self, force: bool) -> Self {
+        self.force = force;
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_decryption(mut self, decryption: Option<DecryptionMethod>) -> Self {
+        self.decryption = decryption;
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_remove_encrypted(mut self, remove_encrypted: bool) -> Self {
+        self.remove_encrypted = remove_encrypted;
+        self
+    }
 }
 
 /// Configuration for collection operations (multi-file archives)

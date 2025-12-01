@@ -92,6 +92,7 @@ pub fn collect_and_compress(
         move_to: None,
         show_output_size: false,
         force: collection_config.base.force,
+        encryption: None, // Encryption happens after collection
     };
 
     // Generate TAR filename

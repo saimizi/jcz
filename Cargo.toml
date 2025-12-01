@@ -1,6 +1,6 @@
 [package]
 name = "jcz"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 authors = ["JCZ Contributors"]
 description = "Just Compress Zip - A unified compression utility"
@@ -24,9 +24,21 @@ chrono = "0.4"
 # Temporary directory management
 tempfile = "3.8"
 
+# Cryptography
+ring = "0.17"
+rsa = "0.9"
+argon2 = "0.5"
+pem = "3.0"
+zeroize = "1.7"
+sha2 = "0.10"
+rand = "0.8"
+rpassword = "7.3"
+
 [dev-dependencies]
 assert_cmd = "2.0"
 predicates = "3.0"
+proptest = "1.4"
+rand = "0.8"
 
 [[bin]]
 name = "jcz"

@@ -1,8 +1,8 @@
 # Software Requirements Specification (SRS)
 ## JCZ - Just Compress Zip Utility
 
-**Version:** 1.1
-**Date:** 2025-11-30
+**Version:** 1.2
+**Date:** 2025-12-01
 **Document Status:** Final
 
 ---
@@ -32,6 +32,10 @@ JCZ is a command-line tool that simplifies file and directory compression/decomp
 - **TGZ**: TAR + GZIP compound format (.tar.gz)
 - **TBZ2**: TAR + BZIP2 compound format (.tar.bz2)
 - **TXZ**: TAR + XZ compound format (.tar.xz)
+- **AES-GCM**: Advanced Encryption Standard in Galois/Counter Mode
+- **RSA**: Rivest-Shamir-Adleman public-key cryptosystem
+- **Argon2id**: Memory-hard password hashing function
+- **JCZE**: JCZ Encrypted file extension (.jcze)
 
 ---
 
@@ -43,11 +47,13 @@ JCZ is a standalone command-line utility that wraps system compression tools (gz
 ### 2.2 Product Features
 1. **Multi-Format Compression**: Support for GZIP, BZIP2, XZ, ZIP, TAR, TGZ, TBZ2, TXZ
 2. **Multi-Format Decompression**: Automatic format detection and sequential decompression
-3. **Isolated Decompression**: Temporary directory isolation prevents file conflicts
-4. **Force Overwrite**: Skip interactive prompts with --force/-f flag
-5. **Auto-Create Directories**: Automatically create destination directories with -C flag
-6. **Multi-File Archive Support**: Correctly handle TAR archives with multiple files
-7. **Configurable Compression Levels**: User-selectable compression ratios (1-9)
+3. **File Encryption**: Password-based and RSA public-key encryption for compressed files
+4. **Secure Decryption**: Automatic encrypted file detection and decryption
+5. **Isolated Decompression**: Temporary directory isolation prevents file conflicts
+6. **Force Overwrite**: Skip interactive prompts with --force/-f flag
+7. **Auto-Create Directories**: Automatically create destination directories with -C flag
+8. **Multi-File Archive Support**: Correctly handle TAR archives with multiple files
+9. **Configurable Compression Levels**: User-selectable compression ratios (1-9)
 8. **Timestamp Appending**: Optional timestamp suffixes for output files
 9. **File Collection**: Combine multiple files into single archive
 10. **Output Relocation**: Move compressed/decompressed files to specified directories
@@ -594,6 +600,125 @@ jcz [Options] <File|Dir> [File|Dir]...
 - Use buffered I/O for efficiency
 - Support streaming writes where possible
 - Ensure atomic file creation (create complete file or fail)
+
+#### 3.2.5 Encryption Requirements
+
+##### FR-ENCRYPT-001: Password-Based Encryption
+**Description**: The system shall encrypt compressed files using password-based encryption.
+
+**Inputs**:
+- Compressed file
+- User password (prompted securely)
+
+**Processing**:
+1. Prompt user for password without echo
+2. Generate cryptographically secure random salt (32 bytes)
+3. Derive encryption key using Argon2id (64MB memory, 3 iterations)
+4. Generate random nonce (12 bytes)
+5. Encrypt data using AES-256-GCM
+6. Create encrypted container with metadata
+7. Write to file with .jcze extension
+
+**Outputs**:
+- Encrypted file (.jcze)
+- Success/error status
+
+**Error Conditions**:
+- Empty password
+- Encryption failure
+- File write error
+
+##### FR-ENCRYPT-002: RSA Public-Key Encryption
+**Description**: The system shall encrypt compressed files using RSA public-key cryptography.
+
+**Inputs**:
+- Compressed file
+- RSA public key file (PEM format, minimum 2048 bits)
+
+**Processing**:
+1. Validate and parse RSA public key
+2. Generate random AES-256 symmetric key
+3. Generate random nonce (12 bytes)
+4. Encrypt data using AES-256-GCM with symmetric key
+5. Encrypt symmetric key using RSA-OAEP-SHA256
+6. Create encrypted container with encrypted key and metadata
+7. Write to file with .jcze extension
+
+**Outputs**:
+- Encrypted file (.jcze)
+- Success/error status
+
+**Error Conditions**:
+- Invalid or missing key file
+- Key size too small (< 2048 bits)
+- Invalid PEM format
+- Encryption failure
+
+##### FR-DECRYPT-001: Password-Based Decryption
+**Description**: The system shall decrypt password-encrypted files.
+
+**Inputs**:
+- Encrypted file (.jcze)
+- User password (prompted securely)
+
+**Processing**:
+1. Read and parse encrypted container
+2. Detect password-based encryption from metadata
+3. Prompt user for password
+4. Derive decryption key using stored salt and Argon2 parameters
+5. Decrypt data using AES-256-GCM
+6. Verify authentication tag
+7. Write decrypted data
+8. Remove encrypted file
+
+**Outputs**:
+- Decrypted compressed file
+- Success/error status
+
+**Error Conditions**:
+- Incorrect password (authentication failure)
+- Corrupted encrypted file
+- Invalid container format
+
+##### FR-DECRYPT-002: RSA Private-Key Decryption
+**Description**: The system shall decrypt RSA-encrypted files using private keys.
+
+**Inputs**:
+- Encrypted file (.jcze)
+- RSA private key file (PEM format)
+
+**Processing**:
+1. Read and parse encrypted container
+2. Validate and parse RSA private key
+3. Decrypt symmetric key using RSA-OAEP-SHA256
+4. Decrypt data using AES-256-GCM with recovered symmetric key
+5. Verify authentication tag
+6. Write decrypted data
+7. Remove encrypted file
+
+**Outputs**:
+- Decrypted compressed file
+- Success/error status
+
+**Error Conditions**:
+- Invalid or missing key file
+- Wrong key (decryption failure)
+- Corrupted encrypted file
+- Authentication failure
+
+##### FR-ENCRYPT-003: Automatic Encrypted File Detection
+**Description**: The system shall automatically detect and handle encrypted files during decompression.
+
+**Inputs**:
+- File path (may be encrypted)
+
+**Processing**:
+1. Check file extension for .jcze
+2. If encrypted, decrypt before decompressing
+3. If not encrypted, proceed with normal decompression
+
+**Outputs**:
+- Appropriate handling based on encryption status
 
 ---
 

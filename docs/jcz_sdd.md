@@ -1,8 +1,8 @@
 # Software Design Document (SDD)
 ## JCZ - Just Compress Zip Utility (Rust Implementation)
 
-**Version:** 1.1
-**Date:** 2025-11-30
+**Version:** 1.2
+**Date:** 2025-12-01
 **Document Status:** Final
 **Implementation Language:** Rust
 
@@ -2479,7 +2479,249 @@ jobs:
 
 ---
 
-## 11. Appendices
+## 11. Encryption Module Design
+
+### 11.1 Overview
+
+The encryption module provides secure file encryption capabilities using both password-based and RSA public-key cryptography. It operates on compressed files, wrapping them in an encrypted container format.
+
+### 11.2 Module Structure
+
+```
+src/crypto/
+├── mod.rs              # Public API and core types
+├── container.rs        # Encrypted container format
+├── password.rs         # Password-based encryption
+├── rsa.rs              # RSA encryption
+└── keys.rs             # Key management utilities
+```
+
+### 11.3 Encrypted Container Format
+
+```
+[Magic Bytes: 4 bytes] "JCZE" (0x4A 0x43 0x5A 0x45)
+[Version: 1 byte]
+[Encryption Type: 1 byte] (0x01 = Password, 0x02 = RSA)
+[Metadata Length: 4 bytes] (little-endian)
+[Metadata: variable]
+[Encrypted Data: variable]
+```
+
+**Password Metadata Format:**
+```
+[Salt: 32 bytes]
+[Nonce: 12 bytes]
+[Argon2 Memory Cost: 4 bytes]
+[Argon2 Time Cost: 4 bytes]
+[Argon2 Parallelism: 4 bytes]
+```
+
+**RSA Metadata Format:**
+```
+[Encrypted Key Length: 4 bytes]
+[Encrypted Symmetric Key: variable]
+[Nonce: 12 bytes]
+```
+
+### 11.4 Core Types
+
+```rust
+pub enum EncryptionMethod {
+    Password,
+    Rsa { public_key_path: PathBuf },
+}
+
+pub enum DecryptionMethod {
+    Password,
+    Rsa { private_key_path: PathBuf },
+}
+
+pub enum EncryptionType {
+    Password = 0x01,
+    Rsa = 0x02,
+}
+
+pub enum EncryptionMetadata {
+    Password {
+        salt: [u8; 32],
+        nonce: [u8; 12],
+        argon2_params: Argon2Params,
+    },
+    Rsa {
+        encrypted_key: Vec<u8>,
+        nonce: [u8; 12],
+    },
+}
+
+pub struct Argon2Params {
+    pub memory_cost: u32,  // Default: 65536 (64 MB)
+    pub time_cost: u32,    // Default: 3
+    pub parallelism: u32,  // Default: 4
+}
+```
+
+### 11.5 Password-Based Encryption
+
+**Algorithm**: AES-256-GCM with Argon2id key derivation
+
+**Process**:
+1. Prompt user for password (no echo)
+2. Generate 32-byte random salt using `ring::rand::SystemRandom`
+3. Derive 256-bit key using Argon2id
+4. Generate 12-byte random nonce
+5. Encrypt data using AES-256-GCM
+6. Create container with salt, nonce, and Argon2 parameters
+7. Write to `.jcze` file
+
+**Security Properties**:
+- Argon2id provides resistance to GPU/ASIC attacks
+- AES-256-GCM provides authenticated encryption
+- Random salt prevents rainbow table attacks
+- Unique nonce per encryption prevents replay attacks
+
+### 11.6 RSA Encryption
+
+**Algorithm**: Hybrid encryption with RSA-OAEP-SHA256 and AES-256-GCM
+
+**Process**:
+1. Parse RSA public key from PEM file
+2. Validate key size (minimum 2048 bits)
+3. Generate random 256-bit AES symmetric key
+4. Generate 12-byte random nonce
+5. Encrypt data using AES-256-GCM with symmetric key
+6. Encrypt symmetric key using RSA-OAEP-SHA256 with public key
+7. Create container with encrypted key and nonce
+8. Write to `.jcze` file
+
+**Security Properties**:
+- RSA-OAEP provides secure key encapsulation
+- Hybrid approach allows efficient encryption of large files
+- Public key encryption ensures only private key holder can decrypt
+- Minimum 2048-bit keys provide adequate security
+
+### 11.7 Decryption
+
+**Password Decryption**:
+1. Read encrypted container
+2. Parse metadata to extract salt, nonce, and Argon2 parameters
+3. Prompt user for password
+4. Derive key using stored parameters
+5. Decrypt using AES-256-GCM
+6. Verify authentication tag
+7. Write decrypted data
+
+**RSA Decryption**:
+1. Read encrypted container
+2. Parse RSA private key from PEM file
+3. Decrypt symmetric key using RSA-OAEP-SHA256
+4. Decrypt data using AES-256-GCM with recovered key
+5. Verify authentication tag
+6. Write decrypted data
+
+### 11.8 Integration with Compression Workflow
+
+**Compression with Encryption**:
+```
+Input File → Compress → Encrypt → Output (.ext.jcze)
+```
+
+**Decompression with Decryption**:
+```
+Input File (.jcze) → Detect Encryption → Decrypt → Decompress → Output
+```
+
+**Configuration Extension**:
+```rust
+pub struct CompressionConfig {
+    // ... existing fields ...
+    pub encryption: Option<EncryptionMethod>,
+}
+
+pub struct DecompressionConfig {
+    pub move_to: Option<PathBuf>,
+    pub force: bool,
+    pub decryption: Option<DecryptionMethod>,
+}
+```
+
+### 11.9 Error Handling
+
+```rust
+pub enum CryptoError {
+    InvalidPassword,
+    InvalidKey,
+    KeyDerivationFailed(String),
+    EncryptionFailed(String),
+    DecryptionFailed(String),
+    AuthenticationFailed,
+    InvalidContainer(String),
+    UnsupportedVersion(u8),
+    IoError(std::io::Error),
+    RsaError(String),
+    KeyFileNotFound(PathBuf),
+    KeyFileNotReadable(PathBuf),
+    InvalidPemFormat(String),
+    KeySizeTooSmall { actual: usize, minimum: usize },
+}
+```
+
+### 11.10 Dependencies
+
+- `ring` (v0.17): AES-256-GCM encryption, CSPRNG
+- `rsa` (v0.9): RSA operations
+- `argon2` (v0.5): Password hashing
+- `pem` (v3.0): PEM file parsing
+- `zeroize` (v1.7): Secure memory clearing
+- `sha2` (v0.10): SHA-256 hashing
+- `rand` (v0.8): Random number generation
+- `rpassword` (v7.3): Secure password input
+
+### 11.11 Testing Strategy
+
+**Unit Tests**:
+- Container serialization/deserialization
+- Key derivation with known test vectors
+- Encryption/decryption round-trips
+- Error condition handling
+
+**Property-Based Tests** (using `proptest`):
+- Password encryption round-trip for arbitrary data
+- RSA encryption round-trip for arbitrary data
+- Wrong password authentication failure
+- Random value uniqueness (salts, nonces, keys)
+- Metadata completeness
+
+**Integration Tests**:
+- End-to-end encryption/decryption with all compression formats
+- Batch file encryption/decryption
+- CLI argument validation
+- Error handling for various failure scenarios
+
+### 11.12 Security Considerations
+
+1. **Password Security**:
+   - Passwords never stored or logged
+   - Secure prompting without echo
+   - Immediate zeroization after use
+
+2. **Key Material**:
+   - Symmetric keys generated using CSPRNG
+   - Keys zeroized after use
+   - Private keys never written by application
+
+3. **Cryptographic Parameters**:
+   - Argon2id: 64MB memory, 3 iterations, 4 threads
+   - AES-256-GCM: 256-bit keys, 96-bit nonces
+   - RSA-OAEP: SHA-256, minimum 2048-bit keys
+
+4. **Implementation**:
+   - Use of well-audited cryptographic libraries
+   - No custom cryptographic primitives
+   - Authenticated encryption prevents tampering
+
+---
+
+## 12. Appendices
 
 ### Appendix A: Rust Ecosystem Alignment
 
@@ -2517,4 +2759,16 @@ Key differences:
 
 ---
 
+## 13. Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0 | 2025-11-30 | Initial release |
+| 1.1 | 2025-11-30 | Added detailed design sections |
+| 1.2 | 2025-12-01 | Added encryption module design |
+
+---
+
 **End of Software Design Document**
+---
+

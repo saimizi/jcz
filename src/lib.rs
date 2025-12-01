@@ -1,6 +1,7 @@
 pub mod cli;
 pub mod compressors;
 pub mod core;
+pub mod crypto;
 pub mod operations;
 pub mod utils;
 
