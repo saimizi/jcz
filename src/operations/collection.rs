@@ -6,6 +6,7 @@ use crate::core::compressor::{Compressor, MultiFileCompressor};
 use crate::core::config::{CollectionConfig, CollectionMode, CompressionConfig, TimestampOption};
 use crate::core::error::{JcError, JcResult};
 use crate::core::types::CompoundFormat;
+use crate::operations::encrypt::encrypt_file;
 use crate::utils::{copy_recursive, create_temp_dir, debug, info, move_file, remove_file_silent};
 
 /// Collect multiple files into a compressed archive
@@ -129,6 +130,13 @@ pub fn collect_and_compress(
         compressed
     } else {
         tar_filename
+    };
+
+    // Apply encryption if specified
+    let final_output = if let Some(ref encryption_method) = collection_config.base.encryption {
+        encrypt_file(&final_output, encryption_method)?
+    } else {
+        final_output
     };
 
     // Move to destination or current directory
