@@ -107,6 +107,11 @@ jobs:
       - name: Install cargo-deb
         run: cargo install cargo-deb
 
+      - name: Set up QEMU for ARM64 emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+
       - name: Create Cargo.toml metadata for debian package
         run: |
           # Backup original Cargo.toml
@@ -154,6 +159,68 @@ jobs:
             exit 1
           fi
 
+      - name: Build Debian package for arm64 in Bookworm container
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Create a build script to run inside the container
+          cat > build-arm64.sh << 'BUILDEOF'
+          #!/bin/bash
+          set -e
+
+          # Install Rust and build dependencies
+          apt-get update
+          apt-get install -y curl gcc libc6-dev pkg-config gzip bzip2 xz-utils tar
+
+          # Install Rust
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          source $HOME/.cargo/env
+
+          # Install cargo-deb
+          cargo install cargo-deb
+
+          # Build the release binary
+          cd /workspace
+          cargo build --release
+
+          # Create the debian package
+          cargo deb
+
+          # Find and copy the generated .deb file
+          DEB_FILE=$(find target/debian -name "*.deb" | head -1)
+          if [ -n "$DEB_FILE" ]; then
+            cp "$DEB_FILE" /output/
+            echo "ARM64 Debian package created: $(basename $DEB_FILE)"
+          else
+            echo "Error: ARM64 Debian package not found"
+            exit 1
+          fi
+          BUILDEOF
+
+          chmod +x build-arm64.sh
+
+          # Create output directory
+          mkdir -p arm64-output
+
+          # Run build in Debian Bookworm ARM64 container
+          docker run --rm --platform linux/arm64 \
+            -v $(pwd):/workspace \
+            -v $(pwd)/arm64-output:/output \
+            -v $(pwd)/build-arm64.sh:/build.sh \
+            debian:bookworm-slim \
+            /build.sh
+
+          # Rename the output file to include _bookworm suffix
+          DEB_FILE=$(find arm64-output -name "*.deb" | head -1)
+          if [ -n "$DEB_FILE" ]; then
+            mv "$DEB_FILE" "jcz_${VERSION}_arm64_bookworm.deb"
+            echo "ARM64 Debian package created: jcz_${VERSION}_arm64_bookworm.deb"
+            ls -lh "jcz_${VERSION}_arm64_bookworm.deb"
+          else
+            echo "Error: ARM64 Debian package not found"
+            exit 1
+          fi
+
       - name: Restore Cargo.toml
         if: always()
         run: |
@@ -178,6 +245,7 @@ jobs:
           files: |
             jcz-${{ steps.version.outputs.version }}.tar.gz
             jcz_${{ steps.version.outputs.version }}_amd64.deb
+            jcz_${{ steps.version.outputs.version }}_arm64_bookworm.deb
           draft: false
           prerelease: false
         env:
