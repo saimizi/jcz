@@ -1,6 +1,6 @@
 [package]
 name = "jcz"
-version = "0.2.5"
+version = "0.2.6"
 edition = "2021"
 authors = ["JCZ Contributors"]
 description = "Just Compress Zip - A unified compression utility"
