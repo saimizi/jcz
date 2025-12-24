@@ -176,18 +176,21 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
           source $HOME/.cargo/env
 
+          # Add ARM64 target
+          rustup target add aarch64-unknown-linux-gnu
+
           # Install cargo-deb
           cargo install cargo-deb
 
-          # Build the release binary
+          # Build the release binary for ARM64
           cd /workspace
-          cargo build --release
+          cargo build --release --target aarch64-unknown-linux-gnu
 
-          # Create the debian package
-          cargo deb
+          # Create the debian package for ARM64
+          cargo deb --target aarch64-unknown-linux-gnu
 
           # Find and copy the generated .deb file
-          DEB_FILE=$(find target/debian -name "*.deb" | head -1)
+          DEB_FILE=$(find target/aarch64-unknown-linux-gnu/debian -name "*.deb" | head -1)
           if [ -n "$DEB_FILE" ]; then
             cp "$DEB_FILE" /output/
             echo "ARM64 Debian package created: $(basename $DEB_FILE)"
