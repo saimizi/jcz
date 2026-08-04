@@ -1,11 +1,11 @@
 [package]
 name = "jcz"
-version = "0.2.6"
+version = "0.2.7"
 edition = "2021"
 authors = ["JCZ Contributors"]
 description = "Just Compress Zip - A unified compression utility"
 license = "MIT"
-repository = "https://github.com/saimizi/jc"
+repository = "https://github.com/saimizi/jcz"
 
 [dependencies]
 # Command-line argument parsing
