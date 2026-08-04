@@ -70,9 +70,19 @@ pub fn move_file(source: &Path, dest_dir: &Path) -> JcResult<PathBuf> {
     }
 }
 
-/// Recursively copy file or directory
+/// Recursively copy file or directory, preserving symlinks.
+///
+/// Symlinks are recreated as symlinks rather than followed, so dangling
+/// symlinks (whose targets do not exist) are copied faithfully instead of
+/// causing an I/O error.
 pub fn copy_recursive(src: &Path, dst: &Path) -> io::Result<()> {
-    if src.is_dir() {
+    // Inspect the link itself, not its target, so symlinks are detected even
+    // when they are dangling.
+    let metadata = fs::symlink_metadata(src)?;
+
+    if metadata.file_type().is_symlink() {
+        copy_symlink(src, dst)?;
+    } else if metadata.is_dir() {
         fs::create_dir_all(dst)?;
         for entry in fs::read_dir(src)? {
             let entry = entry?;
@@ -82,6 +92,33 @@ pub fn copy_recursive(src: &Path, dst: &Path) -> io::Result<()> {
         }
     } else {
         fs::copy(src, dst)?;
+    }
+    Ok(())
+}
+
+/// Recreate a symlink at `dst` pointing to the same target as `src`.
+fn copy_symlink(src: &Path, dst: &Path) -> io::Result<()> {
+    let target = fs::read_link(src)?;
+    // Remove any existing entry at the destination so the symlink can be created.
+    if fs::symlink_metadata(dst).is_ok() {
+        if dst.is_dir() {
+            fs::remove_dir_all(dst)?;
+        } else {
+            fs::remove_file(dst)?;
+        }
+    }
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&target, dst)?;
+    }
+    #[cfg(windows)]
+    {
+        // Best-effort on Windows: choose the symlink kind based on the target.
+        if target.is_dir() {
+            std::os::windows::fs::symlink_dir(&target, dst)?;
+        } else {
+            std::os::windows::fs::symlink_file(&target, dst)?;
+        }
     }
     Ok(())
 }
